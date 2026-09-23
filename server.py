@@ -12,94 +12,29 @@ Discipline: Redes de Computadores: Aplicação e Transporte
 '''
 
 import socket
+from pathlib import Path
 from urllib.parse import urlsplit
+from http_status import HTTPStatus
 
 # Server configuration
 HOST = "0.0.0.0"
 PORT = 8080
 BUFFER_SIZE = 4096
+MAX_HEADER_SIZE = 65536
+EXPECTED_REQUEST_PARTS = 3
+BASE_DIR = Path(__file__).resolve().parent
+TEMPLATES_DIR = BASE_DIR / "templates"
 
+def load_template(filename):
+    """Read and return the content of an HTML template file."""
+    template_path = TEMPLATES_DIR / filename
+    return template_path.read_text(encoding="utf-8")
 
 # HTML Pages
-MAIN_PAGE = """\
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Servidor Web</title>
-</head>
-<body>
-	<h1>Bem-vindo ao nosso servidor Web!</h1>
-	<p>Esta é a página principal do servidor desenvolvido com Sockets TCP.</p>
-	<p><a href="/sobre">Conheça os conceitos de Socket, TCP e HTTP</a></p>
-</body>
-</html>
-"""
-
-ABOUT_PAGE = """\
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Sobre - Servidor Web</title>
-</head>
-<body>
-	<h1>Sobre o servidor</h1>
-
-	<h2>Socket</h2>
-	<p>
-		Um Socket é uma interface de comunicação utilizada por programas
-		para enviar e receber dados através de uma rede.
-	</p>
-
-	<h2>TCP</h2>
-	<p>
-		O TCP é um protocolo da camada de transporte que estabelece uma
-		conexão e permite a entrega confiável e ordenada dos dados.
-	</p>
-
-	<h2>HTTP</h2>
-	<p>
-		O HTTP é um protocolo da camada de aplicação utilizado na
-		comunicação entre clientes e servidores Web. Neste projeto,
-		utilizamos requisições GET e respostas HTTP.
-	</p>
-
-	<p><a href="/">Voltar para a página principal</a></p>
-</body>
-</html>
-"""
-
-NOT_FOUND_PAGE = """\
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-	<meta charset="UTF-8">
-	<title>404 - Página não encontrada</title>
-</head>
-<body>
-	<h1>404 - Página não encontrada</h1>
-	<p>O recurso solicitado não existe neste servidor.</p>
-	<p><a href="/">Voltar para a página principal</a></p>
-</body>
-</html>
-"""
-
-NOT_ALLOWED_PAGE = """\
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-	<meta charset="UTF-8">
-	<title>405 - Método não permitido</title>
-</head>
-<body>
-	<h1>405 - Método não permitido</h1>
-	<p>Este servidor aceita apenas requisições GET.</p>
-</body>
-</html>
-"""
+MAIN_PAGE = load_template("main.html")
+ABOUT_PAGE = load_template("about.html")
+NOT_FOUND_PAGE = load_template("404.html")
+NOT_ALLOWED_PAGE = load_template("405.html")
 
 
 def create_response(status, content, reason):
@@ -126,8 +61,8 @@ def process_request(request):
 
 	parts = initial_line.split()
 
-	if len(parts) != 3:
-		return create_response(400,
+	if len(parts) != EXPECTED_REQUEST_PARTS:
+		return create_response(HTTPStatus.BAD_REQUEST,
 			"<h1>400 - Requisição inválida</h1>", "Bad Request")
 
 	method, path, version = parts
@@ -136,25 +71,25 @@ def process_request(request):
 
 	# The server only accepts HTTP/1.1 and HTTP/1.0.
 	if version not in ("HTTP/1.1", "HTTP/1.0"):
-		return create_response(400,
+		return create_response(HTTPStatus.BAD_REQUEST,
 			"<h1>400 - Versão HTTP não suportada</h1>", "Bad Request")
 
 	# The assignment requires handling only GET requests.
 	if method != "GET":
-		return create_response(405, NOT_ALLOWED_PAGE, "Method Not Allowed")
+		return create_response(HTTPStatus.METHOD_NOT_ALLOWED, NOT_ALLOWED_PAGE, "Method Not Allowed")
 
 	# Ignore URL parameters, like /sobre?origem=menu.
 	path = urlsplit(path).path
 
 	# Identify the requested resource.
 	if path == "/":
-		return create_response(200, MAIN_PAGE, "OK")
+		return create_response(HTTPStatus.OK, MAIN_PAGE, "OK")
 
 	elif path == "/sobre":
-		return create_response(200, ABOUT_PAGE, "OK")
+		return create_response(HTTPStatus.OK, ABOUT_PAGE, "OK")
 
 	else:
-		return create_response(404, NOT_FOUND_PAGE, "Not Found")
+		return create_response(HTTPStatus.NOT_FOUND, NOT_FOUND_PAGE, "Not Found")
 
 
 def handle_client(client, address):
@@ -175,7 +110,7 @@ def handle_client(client, address):
 			data += block
 
 			# Avoid receiving excessively large headers.
-			if len(data) > 65536:
+			if len(data) > MAX_HEADER_SIZE:
 				break
 
 		if not data:
